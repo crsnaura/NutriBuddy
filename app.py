@@ -43,7 +43,25 @@ healthy_options = {
     "high_carb": ["telur rebus", "ayam panggang", "tempe"],
     "balanced": ["buah", "yogurt", "salad"]
 }
+def extract_foods(text, food_list):
+    detected = []
+    words = text.split()
+    for word in words:
+        match = process.extractOne(word, food_list)
+        if match:
+            food_name = match[0]
+            score = match[1]
+                
+            if score > 80:
+                qty = 1
 
+                qty_match = re.search(rf"{word}\s*(\d+)", text)
+                if qty_match:
+                    qty = int(qty_match.group(1))
+
+                detected.append((food_name, qty))
+
+    return detected
 def nutribuddy_response(text):
     detected = extract_foods(text, df["nama"].tolist())
     if len(detected) == 0:
@@ -60,28 +78,6 @@ def nutribuddy_response(text):
     result["protein"] = result["protein"] * result["qty"]
     result["lemak"] = result["lemak"] * result["qty"]
     result["karbohidrat"] = result["karbohidrat"] * result["qty"]
-            
-    def extract_foods(text, food_list):
-        detected = []
-        words = text.split()
-        for word in words:
-            match = process.extractOne(word, food_list)
-            if match:
-                food_name = match[0]
-                score = match[1]
-                
-                if score > 80:
-                    qty = 1
-
-                    qty_match = re.search(rf"{word}\s*(\d+)", text)
-                    if qty_match:
-                        qty = int(qty_match.group(1))
-
-                    detected.append((food_name, qty))
-
-        return detected
-   
-
     rows = []
 
     for food, qty in detected:
@@ -137,3 +133,4 @@ if prompt:
 
     st.session_state.messages.append({"role": "assistant", "content": reply})
     st.chat_message("assistant").write(reply)
+
