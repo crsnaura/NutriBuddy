@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import re
+from rapidfuzz import process
 
 st.set_page_config(page_title="NutriBuddy", page_icon="🥗")
 
@@ -37,22 +38,49 @@ for msg in st.session_state.messages:
 # Input chat
 prompt = st.chat_input("Ketik makanan kamu...")
 
+healthy_options = {
+    "high_fat": ["sup sayur", "tahu kukus", "ikan rebus"],
+    "high_carb": ["telur rebus", "ayam panggang", "tempe"],
+    "balanced": ["buah", "yogurt", "salad"]
+}
+
 def nutribuddy_response(text):
-
-    detected = []
-
-    for food in df["nama"]:
-        if food in text:
-            qty = 1
-
-            match = re.search(rf"{food}\s*(\d+)", text)
-            if match:
-                qty = int(match.group(1))
-
-            detected.append((food, qty))
-
+    detected = extract_foods(text, df["nama"].tolist())
     if len(detected) == 0:
         return "Maaf ya, aku belum nemu makanan itu di database 😢"
+    
+    foods = [item[0] for item in detected]
+    qtys = [item[1] for item in detected]
+
+    result = df[df["nama"].isin(foods)].copy()
+
+    result["qty"] = qtys
+
+    result["kalori"] = result["kalori"] * result["qty"]
+    result["protein"] = result["protein"] * result["qty"]
+    result["lemak"] = result["lemak"] * result["qty"]
+    result["karbohidrat"] = result["karbohidrat"] * result["qty"]
+            
+    def extract_foods(text, food_list):
+        detected = []
+        words = text.split()
+        for word in words:
+            match = process.extractOne(word, food_list)
+            if match:
+                food_name = match[0]
+                score = match[1]
+                
+                if score > 80:
+                    qty = 1
+
+                    qty_match = re.search(rf"{word}\s*(\d+)", text)
+                    if qty_match:
+                        qty = int(qty_match.group(1))
+
+                    detected.append((food_name, qty))
+
+        return detected
+   
 
     rows = []
 
