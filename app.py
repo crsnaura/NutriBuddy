@@ -1,55 +1,11 @@
 import streamlit as st
 import pandas as pd
 import re
-from rapidfuzz import process, fuzz
+from rapidfuzz import process
 
 st.set_page_config(page_title="NutriBuddy", page_icon="🥗")
 
-# ================= UI CHATGPT STYLE + PINK ACCENT =================
-st.markdown("""
-<style>
-[data-testid="stAppViewContainer"] {
-    background-color: #ffffff;
-}
-
-/* chat user */
-[data-testid="stChatMessageContent"][aria-label="user"] {
-    background-color: #ffe4ec;
-    color: black;
-    border-radius: 15px;
-    padding: 10px;
-}
-
-/* chat bot */
-[data-testid="stChatMessageContent"][aria-label="assistant"] {
-    background-color: #fff;
-    color: black;
-    border-radius: 15px;
-    padding: 10px;
-    border: 1px solid #ffb6c1;
-}
-
-/* input */
-textarea {
-    border-radius: 10px !important;
-    border: 1px solid #ff69b4 !important;
-}
-
-/* title */
-h1 {
-    color: #ff4da6;
-    text-align: center;
-}
-
-/* caption */
-p {
-    text-align: center;
-    color: #666;
-}
-</style>
-""", unsafe_allow_html=True)
-
-# ================= LOAD DATA =================
+# Load dataset
 df = pd.read_csv("nutrition.csv")
 df.columns = df.columns.str.lower()
 
@@ -61,124 +17,114 @@ df = df.rename(columns={
     "carbohydrate": "karbohidrat"
 })
 
-df["nama"] = df["nama"].str.lower().str.strip()
+df["nama"] = df["nama"].str.lower()
 
-# ================= HEADER =================
 st.title("🥗 NutriBuddy")
-st.caption("Asisten pintar penghitung kalori makanan 💖")
+st.caption("Asisten pintar penghitung kalori makanan")
 
-# ================= CHAT INIT =================
+# Init chat history (WAJIB PALING ATAS)
 if "messages" not in st.session_state:
     st.session_state["messages"] = []
 
+# Greeting pertama
 if len(st.session_state["messages"]) == 0:
-    st.session_state["messages"].append({
-        "role": "assistant",
-        "content": "Halo! Aku NutriBuddy 🥗💖\nCoba tulis makananmu, misalnya: *udang 2, nasi 1*"
-    })
+    welcome = "Halo! Aku NutriBuddy 🥗\nCeritakan makanan yang kamu konsumsi hari ini ya!"
+    st.session_state["messages"].append({"role": "assistant", "content": welcome})
 
-# ================= DISPLAY =================
+# Display chat history
 for msg in st.session_state.messages:
     st.chat_message(msg["role"]).write(msg["content"])
 
+# Input chat
 prompt = st.chat_input("Ketik makanan kamu...")
 
-# ================= NLP FIX BANGET =================
+healthy_options = {
+    "high_fat": ["sup sayur", "tahu kukus", "ikan rebus"],
+    "high_carb": ["telur rebus", "ayam panggang", "tempe"],
+    "balanced": ["buah", "yogurt", "salad"]
+}
 def extract_foods(text, food_list):
     detected = []
+    words = text.split()
+    for word in words:
+        match = process.extractOne(word, food_list)
+        if match:
+            food_name = match[0]
+            score = match[1]
+                
+            if score > 80:
+                qty = 1
 
-    stopwords = ["aku", "makan", "minum", "tadi", "pagi", "siang", "malam"]
-    words = text.lower().split()
-    filtered = [w for w in words if w not in stopwords]
+                qty_match = re.search(rf"{word}\s*(\d+)", text)
+                if qty_match:
+                    qty = int(qty_match.group(1))
 
-    text_clean = " ".join(filtered)
-
-    items = re.split(r",|dan", text_clean)
-
-    for item in items:
-        item = item.strip()
-
-        qty_match = re.search(r"(\d+)", item)
-        qty = int(qty_match.group(1)) if qty_match else 1
-
-        clean_item = re.sub(r"\d+", "", item).strip()
-
-        # ================= 1. EXACT MATCH =================
-        if clean_item in food_list:
-            detected.append((clean_item, qty))
-            continue
-
-        # ================= 2. PARTIAL MATCH (INI KUNCI 🔥) =================
-        for food in food_list:
-            if food in clean_item:
-                detected.append((food, qty))
-                break
-        else:
-            # ================= 3. FUZZY MATCH =================
-            match = process.extractOne(
-                clean_item,
-                food_list,
-                scorer=fuzz.token_sort_ratio
-            )
-
-            if match and match[1] > 85:
-                detected.append((match[0], qty))
+                detected.append((food_name, qty))
 
     return detected
-# ================= RESPONSE =================
 def nutribuddy_response(text):
     detected = extract_foods(text, df["nama"].tolist())
-
     if len(detected) == 0:
-        return "Aku belum nemu makanan itu 😢 coba tulis lebih sederhana ya!"
+        return "Maaf ya, aku belum nemu makanan itu di database 😢"
+    
+    foods = [item[0] for item in detected]
+    qtys = [item[1] for item in detected]
 
+    result = df[df["nama"].isin(foods)].copy()
+
+    result["qty"] = qtys
+
+    result["kalori"] = result["kalori"] * result["qty"]
+    result["protein"] = result["protein"] * result["qty"]
+    result["lemak"] = result["lemak"] * result["qty"]
+    result["karbohidrat"] = result["karbohidrat"] * result["qty"]
     rows = []
 
     for food, qty in detected:
         row = df[df["nama"] == food].copy()
         row["qty"] = qty
-
-        row["kalori"] *= qty
-        row["protein"] *= qty
-        row["lemak"] *= qty
-        row["karbohidrat"] *= qty
-
         rows.append(row)
 
     result = pd.concat(rows)
+    result["kalori"] *= result["qty"]
+    result["protein"] *= result["qty"]
+    result["lemak"] *= result["qty"]
+    result["karbohidrat"] *= result["qty"]
 
-    st.dataframe(
-        result[["nama","qty","kalori","protein","lemak","karbohidrat"]],
-        use_container_width=True
-    )
+    st.dataframe(result[["nama","qty","kalori","protein","lemak","karbohidrat"]])
 
     total_kalori = result["kalori"].sum()
     total_lemak = result["lemak"].sum()
     total_protein = result["protein"].sum()
     total_karbo = result["karbohidrat"].sum()
 
-    response = "Aku catat ya 💖:\n\n"
+    response = f"""
+Aku catat makanan ini:
 
-    for f, q in detected:
+"""
+
+    for f,q in detected:
         response += f"- {f} ({q} porsi)\n"
 
     response += f"""
+
 🔥 Kalori: {total_kalori:.0f} kkal  
 🥩 Protein: {total_protein:.1f} g  
 🧈 Lemak: {total_lemak:.1f} g  
 🍚 Karbohidrat: {total_karbo:.1f} g  
+
 """
 
-    if total_lemak > 40:
-        response += "\n⚠️ Lemak tinggi, coba pilih makanan rebus ya!"
-    elif total_karbo > 80:
-        response += "\n⚠️ Karbo tinggi, tambahin protein!"
+    if total_lemak > 30:
+        response += "Karena lemak hari ini cukup tinggi, nanti malam kamu bisa pilih sayur bening atau sup ya 🙂"
+    elif total_karbo > 60:
+        response += "Karbohidratnya agak tinggi, seimbangkan dengan lauk berprotein ya 🙂"
     else:
-        response += "\n✅ Asupan kamu cukup seimbang!"
+        response += "Asupan kamu cukup seimbang hari ini 👍"
 
     return response
 
-# ================= RUN =================
+# Process message
 if prompt:
     st.session_state.messages.append({"role": "user", "content": prompt})
     st.chat_message("user").write(prompt)
@@ -187,3 +133,5 @@ if prompt:
 
     st.session_state.messages.append({"role": "assistant", "content": reply})
     st.chat_message("assistant").write(reply)
+
+jadi ituu ner, nlp dan fuzzy matvhingnya belom selesai, terus dia juga filter katanya belom optimal, tolong benerin terus tampilan depannya juga bagusin dong tambahin warna warna pink gitu
