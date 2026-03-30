@@ -87,11 +87,8 @@ prompt = st.chat_input("Ketik makanan kamu...")
 def extract_foods(text, food_list):
     detected = []
 
-    # 🔥 ambil kata makanan aja (hapus kata ga penting)
     stopwords = ["aku", "makan", "minum", "tadi", "pagi", "siang", "malam"]
     words = text.lower().split()
-
-    # filter kata penting
     filtered = [w for w in words if w not in stopwords]
 
     text_clean = " ".join(filtered)
@@ -101,29 +98,33 @@ def extract_foods(text, food_list):
     for item in items:
         item = item.strip()
 
-        # ambil qty
         qty_match = re.search(r"(\d+)", item)
         qty = int(qty_match.group(1)) if qty_match else 1
 
         clean_item = re.sub(r"\d+", "", item).strip()
 
-        # ✅ EXACT MATCH
+        # ================= 1. EXACT MATCH =================
         if clean_item in food_list:
             detected.append((clean_item, qty))
             continue
 
-        # ✅ FUZZY (backup)
-        match = process.extractOne(
-            clean_item,
-            food_list,
-            scorer=fuzz.token_sort_ratio
-        )
+        # ================= 2. PARTIAL MATCH (INI KUNCI 🔥) =================
+        for food in food_list:
+            if food in clean_item:
+                detected.append((food, qty))
+                break
+        else:
+            # ================= 3. FUZZY MATCH =================
+            match = process.extractOne(
+                clean_item,
+                food_list,
+                scorer=fuzz.token_sort_ratio
+            )
 
-        if match and match[1] > 85:
-            detected.append((match[0], qty))
+            if match and match[1] > 85:
+                detected.append((match[0], qty))
 
     return detected
-
 # ================= RESPONSE =================
 def nutribuddy_response(text):
     detected = extract_foods(text, df["nama"].tolist())
