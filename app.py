@@ -44,39 +44,43 @@ healthy_options = {
     "balanced": ["buah", "yogurt", "salad"]
 }
 def extract_foods(text, food_list):
+
     stopwords = [
         "aku","saya","makan","minum","tadi","pagi",
         "siang","malam","dan","sama","pakai","porsi",
         "yang","itu","ini"
     ]
-    detected = []
 
+    common_words = ["daging", "ikan", "sayur", "nasi"]
+
+    detected = []
     words = text.split()
 
     for word in words:
 
-        if word in stopwords:
+        if word in stopwords or word in common_words:
             continue
 
         if word.isdigit():
             continue
 
-        # 1️⃣ CONTAINS MATCH (paling penting)
-        for food in food_list:
-            if word in food:
-                detected.append((food, 1))
+        # ambil top 3 kandidat terbaik
+        matches = process.extract(word, food_list, limit=3)
 
-        # 2️⃣ FUZZY MATCH (backup)
-        match = process.extractOne(word, food_list)
-
-        if match:
+        for match in matches:
             food_name = match[0]
             score = match[1]
 
-            if score > 90:
+            if score > 85:
                 detected.append((food_name, 1))
 
-    detected = list(set(detected))
+    # hapus duplikat dengan aman
+    unique = {}
+    for food, qty in detected:
+        if food not in unique:
+            unique[food] = qty
+
+    detected = [(f, q) for f, q in unique.items()]
 
     return detected
 def nutribuddy_response(text):
