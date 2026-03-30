@@ -54,27 +54,30 @@ def extract_foods(text, food_list):
     common_words = ["daging", "ikan", "sayur", "nasi"]
 
     detected = []
+    ambiguous_candidates = []
+
     words = text.split()
 
     for word in words:
 
-        if word in stopwords or word in common_words:
+        if word in stopwords:
             continue
 
         if word.isdigit():
             continue
 
-        # ambil top 3 kandidat terbaik
-        matches = process.extract(word, food_list, limit=3)
+        matches = process.extract(word, food_list, limit=5)
+
+        # kalau kata terlalu umum → simpan kandidat
+        if word in common_words:
+            ambiguous_candidates = [m[0] for m in matches if m[1] > 80]
+            continue
 
         for match in matches:
-            food_name = match[0]
-            score = match[1]
+            if match[1] > 85:
+                detected.append((match[0], 1))
 
-            if score > 85:
-                detected.append((food_name, 1))
-
-    # hapus duplikat dengan aman
+    # deduplicate
     unique = {}
     for food, qty in detected:
         if food not in unique:
@@ -82,11 +85,40 @@ def extract_foods(text, food_list):
 
     detected = [(f, q) for f, q in unique.items()]
 
-    return detected
+    return detected, ambiguous_candidates
 def nutribuddy_response(text):
-    detected = extract_foods(text, df["nama"].tolist())
-    if len(detected) == 0:
-        return "Maaf ya, aku belum nemu makanan itu di database 😢"
+
+    # 👉 CEK kalau user lagi jawab pilihan
+    if st.session_state["pending_choices"]:
+
+        choice = text.strip().lower()
+
+        if choice in st.session_state["pending_choices"]:
+
+            detected = [(choice, 1)]
+            st.session_state["pending_choices"] = None
+
+        else:
+            return "Pilih salah satu dari opsi yang aku kasih ya 🙂"
+
+    else:
+
+        detected, ambiguous = extract_foods(text, df["nama"].tolist())
+
+        # 👉 kalau ambiguous → tanya balik
+        if ambiguous:
+            st.session_state["pending_choices"] = ambiguous
+
+            options = "\n".join([f"- {a}" for a in ambiguous[:5]])
+
+            return f"""
+Aku belum yakin maksud kamu 🤔
+
+Kamu maksud yang mana:
+{options}
+
+Ketik salah satu ya 🙂
+"""
     
     foods = [item[0] for item in detected]
     qtys = [item[1] for item in detected]
