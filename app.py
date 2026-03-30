@@ -89,7 +89,7 @@ def extract_foods(text, food_list):
 def nutribuddy_response(text):
 
     # 👉 CEK kalau user lagi jawab pilihan
-    if st.session_state["pending_choices"]:
+    if st.session_state.get("pending_choices"):
 
         choice = text.strip().lower()
 
