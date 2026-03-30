@@ -44,22 +44,35 @@ healthy_options = {
     "balanced": ["buah", "yogurt", "salad"]
 }
 def extract_foods(text, food_list):
+
     detected = []
+
     words = text.split()
+
     for word in words:
+
+        if word in stopwords:
+            continue
+
+        if word.isdigit():
+            continue
+
+        # 1️⃣ CONTAINS MATCH (paling penting)
+        for food in food_list:
+            if word in food:
+                detected.append((food, 1))
+
+        # 2️⃣ FUZZY MATCH (backup)
         match = process.extractOne(word, food_list)
+
         if match:
             food_name = match[0]
             score = match[1]
-                
-            if score > 80:
-                qty = 1
 
-                qty_match = re.search(rf"{word}\s*(\d+)", text)
-                if qty_match:
-                    qty = int(qty_match.group(1))
+            if score > 90:
+                detected.append((food_name, 1))
 
-                detected.append((food_name, qty))
+    detected = list(set(detected))
 
     return detected
 def nutribuddy_response(text):
