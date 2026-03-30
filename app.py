@@ -3,31 +3,49 @@ import pandas as pd
 import re
 from rapidfuzz import process, fuzz
 
-# ================= UI CONFIG =================
-st.set_page_config(page_title="NutriBuddy", page_icon="🥗")
+# ================= CONFIG =================
+st.set_page_config(page_title="NutriBuddy", page_icon="🥗", layout="centered")
 
-# Custom CSS (PINK THEME 💖)
+# ================= PINK UI FIX =================
 st.markdown("""
-    <style>
-    body {
-        background-color: #fff0f5;
-    }
-    .stChatMessage {
-        border-radius: 15px;
-        padding: 10px;
-    }
-    .stChatMessage.user {
-        background-color: #ffe4ec;
-    }
-    .stChatMessage.assistant {
-        background-color: #f8c8dc;
-    }
-    .stButton>button {
-        background-color: #ff69b4;
-        color: white;
-        border-radius: 10px;
-    }
-    </style>
+<style>
+/* Background utama */
+[data-testid="stAppViewContainer"] {
+    background-color: #fff0f6;
+}
+
+/* Chat bubble user */
+[data-testid="stChatMessageContent"][aria-label="user"] {
+    background-color: #ffd6e7;
+    border-radius: 15px;
+    padding: 10px;
+}
+
+/* Chat bubble bot */
+[data-testid="stChatMessageContent"][aria-label="assistant"] {
+    background-color: #ffb3d1;
+    border-radius: 15px;
+    padding: 10px;
+}
+
+/* Input box */
+textarea {
+    border-radius: 10px !important;
+    border: 1px solid #ff69b4 !important;
+}
+
+/* Title */
+h1 {
+    color: #ff4da6;
+    text-align: center;
+}
+
+/* Caption */
+p {
+    text-align: center;
+    color: #cc6699;
+}
+</style>
 """, unsafe_allow_html=True)
 
 # ================= LOAD DATA =================
@@ -53,8 +71,10 @@ if "messages" not in st.session_state:
     st.session_state["messages"] = []
 
 if len(st.session_state["messages"]) == 0:
-    welcome = "Halo! Aku NutriBuddy 🥗💖\nCeritakan makanan yang kamu makan hari ini ya!"
-    st.session_state["messages"].append({"role": "assistant", "content": welcome})
+    st.session_state["messages"].append({
+        "role": "assistant",
+        "content": "Halo! Aku NutriBuddy 🥗💖\nCeritakan makanan kamu hari ini ya!"
+    })
 
 # ================= DISPLAY CHAT =================
 for msg in st.session_state.messages:
@@ -63,36 +83,42 @@ for msg in st.session_state.messages:
 # ================= INPUT =================
 prompt = st.chat_input("Contoh: nasi goreng 2, ayam 1")
 
-# ================= NLP FUNCTIONS =================
+# ================= NLP FIX =================
 def extract_foods(text, food_list):
     detected = []
 
-    # Split berdasarkan koma / "dan"
     items = re.split(r",|dan", text)
 
     for item in items:
         item = item.strip()
 
-        # Ambil angka (qty)
+        # qty
         qty_match = re.search(r"(\d+)", item)
         qty = int(qty_match.group(1)) if qty_match else 1
 
-        # Hapus angka dari teks
+        # clean text
         clean_item = re.sub(r"\d+", "", item).strip()
 
-        # Fuzzy match (lebih kuat)
+        # ✅ EXACT MATCH (PRIORITAS)
+        if clean_item in food_list:
+            detected.append((clean_item, qty))
+            continue
+
+        # ✅ FUZZY MATCH (LEBIH KETAT)
         match = process.extractOne(
             clean_item,
             food_list,
-            scorer=fuzz.WRatio
+            scorer=fuzz.token_sort_ratio
         )
 
-        if match and match[1] > 75:
-            detected.append((match[0], qty))
+        if match and match[1] > 85:
+            # filter tambahan biar ga "udang → angsa"
+            if abs(len(clean_item) - len(match[0])) <= 2:
+                detected.append((match[0], qty))
 
     return detected
 
-
+# ================= RESPONSE =================
 def nutribuddy_response(text):
     detected = extract_foods(text, df["nama"].tolist())
 
@@ -114,7 +140,7 @@ def nutribuddy_response(text):
 
     result = pd.concat(rows)
 
-    # ================= DISPLAY TABLE =================
+    # ================= TABLE =================
     st.dataframe(
         result[["nama","qty","kalori","protein","lemak","karbohidrat"]],
         use_container_width=True
@@ -140,14 +166,13 @@ def nutribuddy_response(text):
 
     # ================= SMART FEEDBACK =================
     if total_lemak > 40:
-        response += "\n⚠️ Lemak cukup tinggi, coba next meal pilih yang direbus ya!"
+        response += "\n⚠️ Lemak tinggi, coba next meal direbus ya!"
     elif total_karbo > 80:
-        response += "\n⚠️ Karbo agak tinggi, tambahin protein biar balance!"
+        response += "\n⚠️ Karbo tinggi, tambah protein biar balance!"
     else:
         response += "\n✅ Asupan kamu udah cukup seimbang!"
 
     return response
-
 
 # ================= RUN =================
 if prompt:
