@@ -44,7 +44,11 @@ healthy_options = {
     "balanced": ["buah", "yogurt", "salad"]
 }
 def extract_foods(text, food_list):
-
+    stopwords = [
+        "aku","saya","makan","minum","tadi","pagi",
+        "siang","malam","dan","sama","pakai","porsi",
+        "yang","itu","ini"
+    ]
     detected = []
 
     words = text.split()
