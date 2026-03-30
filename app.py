@@ -133,5 +133,3 @@ if prompt:
 
     st.session_state.messages.append({"role": "assistant", "content": reply})
     st.chat_message("assistant").write(reply)
-
-jadi ituu ner, nlp dan fuzzy matvhingnya belom selesai, terus dia juga filter katanya belom optimal, tolong benerin terus tampilan depannya juga bagusin dong tambahin warna warna pink gitu
