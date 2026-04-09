@@ -67,7 +67,7 @@ def process_input(text):
     if not text_raw: return "Mau tanya apa nih?", None
     
     # Check Negation / No-Food Context
-    negation = ["ga", "ngga", "tidak", "bukan", "belum", "gak", "makananku ga ada", "makan", "engga", "gamau", "kamu", "aku", "dia"]
+    negation = ["ga", "ngga", "tidak", "bukan", "belum", "gak", "makananku ga ada"]
     if any(word == text_raw or f" {word} " in f" {text_raw} " for word in negation) and "makan" in text_raw:
         return "Oke, gapapa! Kalau nanti kamu makan sesuatu, kabari aku ya buat dicatat gizinya. 😊", None
 
@@ -89,7 +89,7 @@ def process_input(text):
         matches = process.extract(query, df["nama"].tolist(), limit=5)
         
         # FILTER KETAT: Threshold dinaikkan ke 60% agar kata random kayak "tokek" nggak lolos
-        if not matches or matches[0][1] < 60:
+        if not matches or matches[0][1] < 70:
             all_responses.append(f"Waduh, sepertinya makanan **'{query}'** nggak ada di database gizi aku. Coba masukkan menu makanan yang umum ya! 🙏")
             continue
 
