@@ -13,49 +13,24 @@ for key in ["messages", "total_kalori_harian", "daftar_makan_harian", "pending_o
 
 st.set_page_config(page_title="NutriBuddy AI", page_icon="🥗", layout="centered")
 
-# --- 2. CSS CUSTOM (TOTAL PRECISION - LEFT ALIGNED & FIXED BUTTON WIDTH) ---
+# --- 2. CSS CUSTOM (FIX PRECISION & ALIGNMENT) ---
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Instrument+Serif&family=Inter:wght@400;500;600&display=swap');
     #MainMenu {visibility: hidden;} footer {visibility: hidden;} header {visibility: hidden;}
-    
     .stApp { background: linear-gradient(135deg, #fdfcfd 0%, #f5f0ff 100%); font-family: 'Inter', sans-serif; }
-    
     .top-header { position: fixed; top: 0; left: 0; width: 100%; padding: 15px 30px; background: rgba(255, 255, 255, 0.7); backdrop-filter: blur(20px); z-index: 999; font-weight: 600; font-size: 18px; color: #4c1d95; border-bottom: 1px solid rgba(139, 92, 246, 0.1); }
-    
     .main .block-container { padding-top: 100px; padding-bottom: 130px; max-width: 800px; }
-    
-    .hero-container { text-align: left; margin-left: 10%; margin-bottom: 30px; }
+    .hero-container { text-align: left; margin-left: 5%; margin-bottom: 30px; }
     .hero-text { font-family: 'Instrument Serif', serif; font-size: 64px; color: #2e1065; line-height: 1.1; margin-bottom: 8px; }
     .hero-subtext { color: #6b21a8; font-size: 20px; opacity: 0.8; }
-    
     .chat-row { display: flex; margin: 18px 0; width: 100%; animation: fadeIn 0.4s ease-out; }
     .row-user { justify-content: flex-end; }
     .row-bot { justify-content: flex-start; }
-    
     .bubble-user { background: #8b5cf6; color: white; padding: 12px 22px; border-radius: 24px 24px 4px 24px; box-shadow: 0 4px 12px rgba(139, 92, 246, 0.2); max-width: 85%; }
     .bubble-bot { background: rgba(255, 255, 255, 0.85); color: #1e1b4b; padding: 16px 22px; border-radius: 4px 24px 24px 24px; border: 1px solid rgba(139, 92, 246, 0.2); backdrop-filter: blur(12px); box-shadow: 0 4px 20px rgba(0,0,0,0.03); max-width: 85%; }
-
-    /* Fix Kotak Tombol Saran & Pilihan */
-    div.stButton > button { 
-        background: white; 
-        border: 1px solid rgba(139, 92, 246, 0.1); 
-        border-radius: 12px; 
-        padding: 18px 25px; 
-        color: #4c1d95; 
-        font-weight: 500; 
-        width: 100% !important; 
-        display: block;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.02);
-        transition: all 0.2s ease;
-    }
-    div.stButton > button:hover { 
-        border-color: #8b5cf6; 
-        background: #fdfaff; 
-        transform: translateY(-2px); 
-        box-shadow: 0 5px 15px rgba(139, 92, 246, 0.1); 
-    }
-
+    div.stButton > button { background: white; border: 1px solid rgba(139, 92, 246, 0.1); border-radius: 12px; padding: 18px 25px; color: #4c1d95; font-weight: 500; width: 100% !important; transition: all 0.2s; }
+    div.stButton > button:hover { border-color: #8b5cf6; background: #fdfaff; transform: translateY(-2px); }
     @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
 </style>
 """, unsafe_allow_html=True)
@@ -76,7 +51,7 @@ def load_data():
 
 df = load_data()
 
-# --- 4. LOGIKA PINTAR (FILTER KATA UMUM/GA JELAS) ---
+# --- 4. LOGIKA ANTI-NGASAL ---
 def get_nutrition_response(food_name, qty=1.0):
     row = df[df["nama"] == food_name].iloc[0]
     kalori, protein, lemak, karbo = row['kalori']*qty, row['protein']*qty, row['lemak']*qty, row['karbo']*qty
@@ -91,10 +66,15 @@ def process_input(text):
     text_raw = text.lower().strip()
     if not text_raw: return "Mau tanya apa nih?", None
     
-    if any(k in text_raw for k in ["total", "jumlah", "riwayat"]):
+    # Check Negation / No-Food Context
+    negation = ["ga", "ngga", "tidak", "bukan", "belum", "gak", "makananku ga ada"]
+    if any(word == text_raw or f" {word} " in f" {text_raw} " for word in negation) and "makan" in text_raw:
+        return "Oke, gapapa! Kalau nanti kamu makan sesuatu, kabari aku ya buat dicatat gizinya. 😊", None
+
+    if any(k in text_raw for k in ["total", "jumlah", "riwayat", "sisa"]):
         total = st.session_state.total_kalori_harian
         riwayat = ", ".join(st.session_state.daftar_makan_harian) if st.session_state.daftar_makan_harian else "Kosong"
-        return f"Total asupan: **{total:.0f} kkal**.\n\nRiwayat: {riwayat}.", None
+        return f"Total asupanmu: **{total:.0f} kkal**.\n\nRiwayat: {riwayat}.", None
 
     segments = re.split(r' dan |,| dan', text_raw)
     all_responses = []
@@ -103,13 +83,14 @@ def process_input(text):
         qty_match = re.search(r'(\d+)\s*porsi', seg)
         qty = float(qty_match.group(1)) if qty_match else 1.0
         query = re.sub(r'\d+|makan|porsi|tadi|habis|beli|dan|saya|aku|mau', '', seg).strip()
+        
         if len(query) < 2: continue
         
         matches = process.extract(query, df["nama"].tolist(), limit=5)
         
-        # FILTER KETAT: Kalau kemiripan di bawah 45%, berarti keyword ga nyambung
-        if not matches or matches[0][1] < 45:
-            all_responses.append(f"Aduh, maaf banget... Makanan **'{query}'** belum ada di database aku nih. Coba cek ejaan atau masukin menu lain ya! 🥺")
+        # FILTER KETAT: Threshold dinaikkan ke 60% agar kata random kayak "tokek" nggak lolos
+        if not matches or matches[0][1] < 60:
+            all_responses.append(f"Waduh, sepertinya makanan **'{query}'** nggak ada di database gizi aku. Coba masukkan menu makanan yang umum ya! 🙏")
             continue
 
         if matches[0][1] > 98 and len([m for m in matches if m[1] > 85]) == 1:
@@ -118,20 +99,14 @@ def process_input(text):
             st.session_state.last_qty = qty
             return "Maksud kamu yang mana nih? Pilih salah satu ya!", [m[0] for m in matches]
 
-    return "\n\n---\n\n".join(all_responses) if all_responses else "Coba sebutkan nama makanannya ya!", None
+    return "\n\n---\n\n".join(all_responses) if all_responses else "Bisa sebutkan nama makanannya dengan jelas? 😊", None
 
 # --- 5. UI RENDER ---
-if st.session_state.total_kalori_harian > 0:
-    st.write(f"**Harian: {st.session_state.total_kalori_harian:.0f} / 2000 kkal**")
-    st.progress(min(st.session_state.total_kalori_harian / 2000, 1.0))
-
 main_area = st.container()
 with main_area:
     if not st.session_state.messages:
         st.markdown("<div class='hero-container'><div class='hero-text'>Hello!</div><div class='hero-subtext'>Sudah makan apa aja hari ini?</div></div>", unsafe_allow_html=True)
-        
-        # Grid Tombol Saran (Left Aligned with Hero)
-        _, btn_col, _ = st.columns([0.1, 0.8, 0.1])
+        _, btn_col, _ = st.columns([0.05, 0.9, 0.05])
         with btn_col:
             c1, c2 = st.columns(2)
             saran = [("Ayam Ampla Goreng 🍳", "ayam ampla goreng"), ("Geprek Mba Rara 🍗", "ayam geprek"), ("Mie Ayam 🍜", "mie ayam"), ("Martabak Telur 🥪", "martabak telur")]
@@ -150,7 +125,7 @@ with main_area:
 
     if st.session_state.pending_options:
         st.markdown("<div style='text-align: left; margin-left: 5%; margin-bottom: 10px; font-weight: 600; color: #4c1d95;'>Pilih salah satu ya:</div>", unsafe_allow_html=True)
-        _, f_col, _ = st.columns([0.1, 0.8, 0.1])
+        _, f_col, _ = st.columns([0.05, 0.9, 0.05])
         with f_col:
             f1, f2 = st.columns(2)
             for i, opt in enumerate(st.session_state.pending_options):
