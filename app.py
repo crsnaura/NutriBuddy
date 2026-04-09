@@ -57,7 +57,7 @@ def get_nutrition_response(food_name, qty=1.0):
     kalori, protein, lemak, karbo = row['kalori']*qty, row['protein']*qty, row['lemak']*qty, row['karbo']*qty
     st.session_state.total_kalori_harian += kalori
     st.session_state.daftar_makan_harian.append(f"{food_name.title()} ({qty}x)")
-    return (f"✅ Dicatat: **{food_name.title()}** ({qty} porsi)\n\n"
+    return (f"✅ Dicatat: {food_name.title()} ({qty} porsi)\n\n"
             f"Total energi: **{kalori:.0f} kkal**\n"
             f"**Rincian Gizi:**\n• Karbo: {karbo:.1f}g | Protein: {protein:.1f}g | Lemak: {lemak:.1f}g\n\n"
             f"⚠️ *Catatan: Data dihitung per 100 gram per porsi.*")
