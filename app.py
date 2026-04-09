@@ -67,7 +67,7 @@ def process_input(text):
     if not text_raw: return "Mau tanya apa nih?", None
     
     # Check Negation / No-Food Context
-    negation = ["ga", "ngga", "tidak", "bukan", "belum", "gak", "makananku ga ada"]
+    negation = ["ga", "ngga", "tidak", "bukan", "belum", "gak", "makananku ga ada", "makan", "engga", "gamau", "kamu", "aku", "dia"]
     if any(word == text_raw or f" {word} " in f" {text_raw} " for word in negation) and "makan" in text_raw:
         return "Oke, gapapa! Kalau nanti kamu makan sesuatu, kabari aku ya buat dicatat gizinya. 😊", None
 
