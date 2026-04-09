@@ -13,7 +13,7 @@ for key in ["messages", "total_kalori_harian", "daftar_makan_harian", "pending_o
 
 st.set_page_config(page_title="NutriBuddy AI", page_icon="🥗", layout="centered")
 
-# --- 2. CSS CUSTOM (TOTAL RECALL - PERSIS SS KAMU) ---
+# --- 2. CSS CUSTOM (FIX ALIGNMENT KE KIRI PERSIS SS) ---
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Instrument+Serif&family=Inter:wght@400;500;600&display=swap');
@@ -25,8 +25,10 @@ st.markdown("""
     
     .main .block-container { padding-top: 100px; padding-bottom: 130px; max-width: 650px; }
     
-    .hero-text { font-family: 'Instrument Serif', serif; font-size: 52px; color: #2e1065; line-height: 1.1; margin-bottom: 8px; text-align: center; }
-    .hero-subtext { color: #6b21a8; font-size: 18px; margin-bottom: 40px; text-align: center; opacity: 0.8; }
+    /* FIX: Rata Kiri untuk Hero Section */
+    .hero-container { text-align: left; margin-bottom: 40px; }
+    .hero-text { font-family: 'Instrument Serif', serif; font-size: 52px; color: #2e1065; line-height: 1.1; margin-bottom: 8px; }
+    .hero-subtext { color: #6b21a8; font-size: 18px; opacity: 0.8; }
     
     .chat-row { display: flex; margin: 18px 0; width: 100%; animation: fadeIn 0.4s ease-out; }
     .row-user { justify-content: flex-end; }
@@ -93,13 +95,11 @@ def process_input(text):
         query = re.sub(r'\d+|makan|porsi|tadi|habis|beli|dan|saya|aku|mau', '', seg).strip()
         if not query: continue
         
-        # LOGIKA AYAM: Ambil semua yang mirip
         matches = process.extract(query, df["nama"].tolist(), limit=5)
         
-        # Jika cuma ada 1 yang mirip banget (>98%), langsung hajar
-        if matches and matches[0][1] > 98 and len([m for m in matches if m[1] > 80]) == 1:
+        # Logika Nanya: Kalau "ayam" ambigu, tanya pilihannya.
+        if matches and matches[0][1] > 98 and len([m for m in matches if m[1] > 85]) == 1:
             all_responses.append(get_nutrition_response(matches[0][0], qty))
-        # Jika ada banyak pilihan (seperti ayam goreng, ayam bakar, dll), nanya!
         elif matches and matches[0][1] > 60:
             st.session_state.last_qty = qty
             return "Maksud kamu yang mana nih? Pilih salah satu ya!", [m[0] for m in matches]
@@ -119,22 +119,25 @@ if st.session_state.total_kalori_harian > 0:
 main_area = st.container()
 with main_area:
     if not st.session_state.messages:
-        st.markdown("<div class='hero-text'>Hello!</div>", unsafe_allow_html=True)
-        st.markdown("<div class='hero-subtext'>Sudah makan apa aja hari ini?</div>", unsafe_allow_html=True)
+        # TAMPILAN AWAL (LEFT ALIGNED)
+        st.markdown("""
+        <div class='hero-container'>
+            <div class='hero-text'>Hello!</div>
+            <div class='hero-subtext'>Sudah makan apa aja hari ini?</div>
+        </div>
+        """, unsafe_allow_html=True)
         
-        _, col_s, _ = st.columns([0.1, 4, 0.1])
-        with col_s:
-            s1, s2 = st.columns(2)
-            saran = [("Ayam Ampla Goreng 🍳", "ayam ampla goreng"), ("Geprek Mba Rara 🍗", "ayam geprek"), 
-                     ("Mie Ayam 🍜", "mie ayam"), ("Martabak Telur 🥪", "martabak telur")]
-            for idx, (label, q) in enumerate(saran):
-                with (s1 if idx % 2 == 0 else s2):
-                    if st.button(label, key=f"s_{idx}"):
-                        st.session_state.messages.append({"role": "user", "content": label})
-                        ans, opts = process_input(q)
-                        st.session_state.messages.append({"role": "assistant", "content": ans})
-                        st.session_state.pending_options = opts
-                        st.rerun()
+        c1, c2 = st.columns(2)
+        saran = [("Ayam Ampla Goreng 🍳", "ayam ampla goreng"), ("Geprek Mba Rara 🍗", "ayam geprek"), 
+                 ("Mie Ayam 🍜", "mie ayam"), ("Martabak Telur 🥪", "martabak telur")]
+        for idx, (label, q) in enumerate(saran):
+            with (c1 if idx % 2 == 0 else c2):
+                if st.button(label, key=f"s_{idx}"):
+                    st.session_state.messages.append({"role": "user", "content": label})
+                    ans, opts = process_input(q)
+                    st.session_state.messages.append({"role": "assistant", "content": ans})
+                    st.session_state.pending_options = opts
+                    st.rerun()
 
     for msg in st.session_state.messages:
         side = "row-user" if msg["role"] == "user" else "row-bot"
@@ -142,18 +145,16 @@ with main_area:
         st.markdown(f'<div class="chat-row {side}"><div class="{bubble}">{msg["content"]}</div></div>', unsafe_allow_html=True)
 
     if st.session_state.pending_options:
-        st.markdown("<div style='text-align: center; margin-top: 20px; font-weight: 600; color: #4c1d95;'>Pilih salah satu ya:</div>", unsafe_allow_html=True)
-        _, f_col, _ = st.columns([0.1, 4, 0.1])
-        with f_col:
-            f1, f2 = st.columns(2)
-            for i, opt in enumerate(st.session_state.pending_options):
-                with (f1 if i % 2 == 0 else f2):
-                    if st.button(opt.title(), key=f"f_{i}"):
-                        st.session_state.messages.append({"role": "user", "content": opt.title()})
-                        res = get_nutrition_response(opt, st.session_state.last_qty)
-                        st.session_state.messages.append({"role": "assistant", "content": res})
-                        st.session_state.pending_options = None
-                        st.rerun()
+        st.markdown("<div style='text-align: left; margin: 20px 0; font-weight: 600; color: #4c1d95;'>Pilih salah satu ya:</div>", unsafe_allow_html=True)
+        f1, f2 = st.columns(2)
+        for i, opt in enumerate(st.session_state.pending_options):
+            with (f1 if i % 2 == 0 else f2):
+                if st.button(opt.title(), key=f"f_{i}"):
+                    st.session_state.messages.append({"role": "user", "content": opt.title()})
+                    res = get_nutrition_response(opt, st.session_state.last_qty)
+                    st.session_state.messages.append({"role": "assistant", "content": res})
+                    st.session_state.pending_options = None
+                    st.rerun()
 
 prompt = st.chat_input("Tanya NutriBuddy...")
 if prompt:
