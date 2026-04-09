@@ -115,17 +115,30 @@ st.markdown("""
 
 st.markdown('<div class="top-header">NutriBuddy</div>', unsafe_allow_html=True)
 
-# --- 3. DATA LOAD ---
+# Load Data
 @st.cache_data
 def load_data():
-    path = "C:/Users/Aul/Downloads/nutribuddyantirevisi/nutrition.csv"
+    # Gunakan path relatif agar aman di lokal maupun Streamlit Cloud
+    path = "nutrition.csv" 
     try:
         df = pd.read_csv(path)
-        df.columns = df.columns.str.lower()
-        df = df.rename(columns={"name": "nama", "calories": "kalori", "proteins": "protein", "fat": "lemak", "carbohydrate": "karbohidrat"})
-        df["nama"] = df["nama"].str.lower()
+        # Normalisasi nama kolom: hapus spasi & kecilkan semua huruf
+        df.columns = df.columns.str.strip().str.lower()
+        
+        # Cek apakah kolom 'name' ada sebelum di-rename
+        if 'name' in df.columns:
+            df = df.rename(columns={"name": "nama", "calories": "kalori", "proteins": "protein", "fat": "lemak", "carbohydrate": "karbohidrat"})
+        
+        # Pastikan kolom 'nama' benar-benar ada
+        if "nama" not in df.columns:
+            st.error("Waduh, kolom 'nama' atau 'name' gak ketemu di CSV!")
+            return pd.DataFrame(columns=["nama", "kalori", "protein", "lemak", "karbohidrat"])
+            
+        df["nama"] = df["nama"].astype(str).str.lower()
         return df
-    except: return pd.DataFrame()
+    except Exception as e:
+        st.error(f"Gagal muat data: {e}")
+        return pd.DataFrame(columns=["nama", "kalori", "protein", "lemak", "karbohidrat"])
 
 df = load_data()
 
