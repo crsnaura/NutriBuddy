@@ -13,10 +13,12 @@ if "daftar_makan_harian" not in st.session_state:
     st.session_state.daftar_makan_harian = []
 if "pending_options" not in st.session_state:
     st.session_state.pending_options = None
+if "last_qty" not in st.session_state:
+    st.session_state.last_qty = 1.0
 
 st.set_page_config(page_title="NutriBuddy AI", page_icon="🥗", layout="centered")
 
-# --- 2. CSS CUSTOM ---
+# --- 2. CSS CUSTOM (STETIK UNGU) ---
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Instrument+Serif&family=Inter:wght@400;500;600&display=swap');
@@ -30,8 +32,8 @@ st.markdown("""
     .row-bot { justify-content: flex-start; }
     .bubble-user { background: #8b5cf6; color: white; padding: 12px 22px; border-radius: 24px 24px 4px 24px; box-shadow: 0 4px 12px rgba(139, 92, 246, 0.2); max-width: 85%; }
     .bubble-bot { background: rgba(255, 255, 255, 0.85); color: #1e1b4b; padding: 16px 22px; border-radius: 4px 24px 24px 24px; border: 1px solid rgba(139, 92, 246, 0.2); backdrop-filter: blur(12px); box-shadow: 0 4px 20px rgba(0,0,0,0.03); max-width: 85%; line-height: 1.5; }
-    div.stButton > button { background: white; border: 1px solid rgba(139, 92, 246, 0.15); border-radius: 20px; padding: 10px 15px; color: #4c1d95; }
-    @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+    div.stButton > button { background: white; border: 1px solid rgba(139, 92, 246, 0.15); border-radius: 20px; padding: 10px 20px; color: #4c1d95; font-weight: 500; transition: all 0.2s; }
+    div.stButton > button:hover { border-color: #8b5cf6; background: #fdfaff; transform: translateY(-2px); }
 </style>
 """, unsafe_allow_html=True)
 
@@ -52,19 +54,23 @@ def load_data():
 df = load_data()
 
 # --- 4. LOGIKA PINTAR ---
-def get_nutrition_info(food_name, qty=1.0):
-    """Hanya mengambil data tanpa menambah ke session state (untuk multisearch)"""
-    try:
-        row = df[df["nama"] == food_name].iloc[0]
-        return {
-            "nama": food_name.title(),
-            "kalori": row['kalori'] * qty,
-            "protein": row['protein'] * qty,
-            "lemak": row['lemak'] * qty,
-            "karbo": row['karbohidrat'] * qty,
-            "qty": qty
-        }
-    except: return None
+def get_nutrition_response(food_name, qty=1.0):
+    row = df[df["nama"] == food_name].iloc[0]
+    kalori = row['kalori'] * qty
+    protein = f"{row['protein'] * qty:.1f}g"
+    lemak = f"{row['lemak'] * qty:.1f}g"
+    karbo = f"{row['karbohidrat'] * qty:.1f}g"
+
+    st.session_state.total_kalori_harian += kalori
+    st.session_state.daftar_makan_harian.append(f"{food_name.title()} ({qty}x)")
+    
+    qty_label = f"**{qty:.0f} porsi** " if qty > 1 else ""
+    return (f"✅ Dicatat: {qty_label}**{food_name.title()}**\n\n"
+            f"Total energi: **{kalori:.0f} kkal**\n"
+            f"*(Estimasi {qty} porsi × 100g)*\n\n"
+            f"**Rincian Gizi:**\n"
+            f"• Karbo: {karbo} | Protein: {protein} | Lemak: {lemak}\n\n"
+            f"⚠️ *Catatan: Data dihitung per 100g per porsi.*")
 
 def clean_segment(text):
     stopwords = ["makan", "minum", "saya", "tadi", "porsi", "habis", "beli", "dan"]
@@ -78,42 +84,37 @@ def clean_segment(text):
 def process_input(text):
     text_raw = text.lower()
     
-    # Summary Check
     if any(k in text_raw for k in ["total", "jumlah", "kurang", "sisa", "riwayat"]):
         total = st.session_state.total_kalori_harian
         ringkasan = ", ".join(st.session_state.daftar_makan_harian) if st.session_state.daftar_makan_harian else "Kosong"
         return f"Total: **{total:.0f} kkal**.\n\nRiwayat: {ringkasan}.", None
 
-    # Multisearch Logic (Split by 'dan' or ',')
     segments = re.split(r' dan |,| dan', text_raw)
     all_responses = []
-    pending_to_ask = []
-
+    
     for seg in segments:
         query, qty = clean_segment(seg)
         if not query.strip(): continue
         
-        matches = process.extract(query, df["nama"].tolist(), limit=3)
-        if matches and matches[0][1] > 90:
-            info = get_nutrition_info(matches[0][0], qty)
-            st.session_state.total_kalori_harian += info['kalori']
-            st.session_state.daftar_makan_harian.append(f"{info['nama']} ({qty}x)")
-            all_responses.append(f"• **{info['nama']}** ({qty}x100g): {info['kalori']:.0f} kkal")
+        matches = process.extract(query, df["nama"].tolist(), limit=5)
+        
+        # JIKA SANGAT MIRIP (>95%)
+        if matches and matches[0][1] > 95:
+            all_responses.append(get_nutrition_response(matches[0][0], qty))
+        # JIKA AMBIGU (Butuh Pilihan)
+        elif matches and matches[0][1] > 65:
+            st.session_state.last_qty = qty
+            return "Maksud kamu yang mana nih? Pilih salah satu ya!", [m[0] for m in matches]
         else:
-            pending_to_ask.append(query)
-
-    if pending_to_ask:
-        # Jika ada yang tidak jelas, tanya satu per satu (prioritas item pertama)
-        matches = process.extract(pending_to_ask[0], df["nama"].tolist(), limit=5)
-        return "Ada yang kurang jelas nih, maksud kamu yang mana?", [m[0] for m in matches if m[1] > 60]
+            all_responses.append(f"❓ Aduh, aku ngga nemu '{query}' di database.")
 
     if all_responses:
-        return "Berhasil mencatat:\n" + "\n".join(all_responses) + "\n\n*Data berbasis 100g per porsi.*", None
+        return "\n\n---\n\n".join(all_responses), None
     
     return "Duh, aku ngga paham. Coba sebutkan nama makanannya ya!", None
 
 # --- 5. TAMPILAN UTAMA ---
-# --- PROGRESS VISUALIZATION ---
+# Progress Bar
 if st.session_state.total_kalori_harian > 0:
     target = 2000
     progress = min(st.session_state.total_kalori_harian / target, 1.0)
@@ -125,27 +126,29 @@ main_container = st.container()
 with main_container:
     if not st.session_state.messages:
         st.markdown("<div class='hero-text'>Hello!</div>", unsafe_allow_html=True)
-        st.markdown("<div class='hero-subtext'>Sudah makan apa hari ini? Bisa sebutkan beberapa sekaligus, lho!</div>", unsafe_allow_html=True)
+        st.markdown("<div class='hero-subtext'>Sudah makan apa hari ini?</div>", unsafe_allow_html=True)
     
     for msg in st.session_state.messages:
         side, bubble = ("row-user", "bubble-user") if msg["role"] == "user" else ("row-bot", "bubble-bot")
         st.markdown(f'<div class="chat-row {side}"><div class="{bubble}">{msg["content"]}</div></div>', unsafe_allow_html=True)
 
+    # Render Pilihan Fuzzy (TOMBOL PILIHAN)
     if st.session_state.pending_options:
-        cols = st.columns(len(st.session_state.pending_options))
-        for i, opt in enumerate(st.session_state.pending_options):
-            with cols[i]:
-                if st.button(opt.title(), key=f"c_{i}"):
-                    st.session_state.messages.append({"role": "user", "content": opt})
-                    # Simpan pilihan manual
-                    info = get_nutrition_info(opt, 1.0)
-                    st.session_state.total_kalori_harian += info['kalori']
-                    st.session_state.daftar_makan_harian.append(info['nama'])
-                    st.session_state.messages.append({"role": "assistant", "content": f"Sip! {info['nama']} sudah dicatat."})
-                    st.session_state.pending_options = None
-                    st.rerun()
+        st.markdown("<div style='text-align: center; opacity: 0.5; margin: 20px 0 10px 0;'>— Pilih salah satu ya —</div>", unsafe_allow_html=True)
+        _, center_area, _ = st.columns([0.1, 4, 0.1])
+        with center_area:
+            sub_cols = st.columns(2)
+            for i, opt in enumerate(st.session_state.pending_options):
+                with sub_cols[i % 2]:
+                    if st.button(opt.title(), key=f"choice_{i}", use_container_width=True):
+                        st.session_state.messages.append({"role": "user", "content": opt})
+                        qty = st.session_state.get("last_qty", 1.0)
+                        jawaban = get_nutrition_response(opt, qty)
+                        st.session_state.messages.append({"role": "assistant", "content": jawaban})
+                        st.session_state.pending_options = None
+                        st.rerun()
 
-prompt = st.chat_input("Contoh: makan 2 porsi sate dan 1 porsi nasi")
+prompt = st.chat_input("Tanya NutriBuddy...")
 if prompt:
     st.session_state.messages.append({"role": "user", "content": prompt})
     jawaban, options = process_input(prompt)
