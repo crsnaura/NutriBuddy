@@ -3,6 +3,17 @@ import pandas as pd
 from rapidfuzz import process
 from collections import Counter
 import re
+from transformers import AutoTokenizer, AutoModelForTokenClassification
+import torch
+
+@st.cache_resource
+def load_ner_model():
+    model_path = "model"  # folder di repo kamu
+    tokenizer = AutoTokenizer.from_pretrained(model_path)
+    model = AutoModelForTokenClassification.from_pretrained(model_path)
+    return tokenizer, model
+
+tokenizer, model = load_ner_model()
 
 # --- 1. INITIAL SETTINGS ---
 if "messages" not in st.session_state:
