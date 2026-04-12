@@ -227,7 +227,7 @@ def extract_entities(text, food_list):
         "foods": unique_foods,
         "quantities": quantities if quantities else ["1"]
     }
-    }
+
 # --- 5. TAMPILAN UTAMA ---
 main_container = st.container()
 
