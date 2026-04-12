@@ -199,23 +199,34 @@ def process_input(text):
 def extract_entities(text, food_list):
     text = text.lower()
     
-    # Cari angka (quantity)
+    # Hapus kata keterangan/stopword agar tidak salah deteksi jadi makanan
+    stopwords = ["habis", "makan", "dan", "saya", "tadi", "sama", "dengan", "porsi"]
+    for word in stopwords:
+        text = text.replace(f" {word} ", " ")
+
+    # 1. Ekstraksi Angka (Quantity) menggunakan Regex
     quantities = re.findall(r'\d+', text)
     
-    # Cari makanan pakai fuzzy
+    # 2. Ekstraksi Makanan (Food) - Hanya ambil kata yang bukan angka
+    words = [w for w in text.split() if not w.isdigit()]
     detected_foods = []
-    words = text.split()
     
-    for i in range(len(words)):
-        for j in range(i+1, min(i+4, len(words)+1)):
-            phrase = " ".join(words[i:j])
-            match = process.extractOne(phrase, food_list)
-            if match and match[1] > 85:
-                detected_foods.append(match[0])
-    
+    for word in words:
+        if len(word) < 3: continue # Abaikan kata yang terlalu pendek (1-2 huruf)
+        
+        # Fuzzy Match dengan threshold tinggi (90) agar tidak asal cocok
+        match = process.extractOne(word, food_list, score_cutoff=90)
+        if match:
+            detected_foods.append(match[0])
+            
+    # Menghapus duplikat makanan
+    seen = set()
+    unique_foods = [x for x in detected_foods if not (x in seen or seen.add(x))]
+
     return {
-        "foods": list(set(detected_foods)),
+        "foods": unique_foods,
         "quantities": quantities if quantities else ["1"]
+    }
     }
 # --- 5. TAMPILAN UTAMA ---
 main_container = st.container()
