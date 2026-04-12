@@ -3,17 +3,6 @@ import pandas as pd
 from rapidfuzz import process
 from collections import Counter
 import re
-from transformers import AutoTokenizer, AutoModelForTokenClassification
-import torch
-
-@st.cache_resource
-def load_ner_model():
-    model_path = "model"  # folder di repo kamu
-    tokenizer = AutoTokenizer.from_pretrained(model_path)
-    model = AutoModelForTokenClassification.from_pretrained(model_path)
-    return tokenizer, model
-
-tokenizer, model = load_ner_model()
 
 # --- 1. INITIAL SETTINGS ---
 if "messages" not in st.session_state:
@@ -215,11 +204,6 @@ def process_input(text):
     # Jika ambigu, berikan pilihan (Simpan qty ke session agar tidak hilang)
     st.session_state.last_qty = qty
     return "Maksud kamu yang mana nih? Pilih salah satu ya!", high_matches
-
-    # PANGGIL LOGIKA NER (Sesuai Metodologi Jurnal)
-    from utils.ner import extract_entities_indobert
-
-    food_query, qty = extract_entities_indobert(text, tokenizer, model)
 
     if not food_query:
         return "Aku belum ngerti makanan yang kamu maksud 😢", None
