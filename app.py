@@ -123,7 +123,7 @@ st.markdown('<div class="top-header">NutriBuddy</div>', unsafe_allow_html=True)
 # --- 3. DATA LOAD ---
 @st.cache_data
 def load_data():
-    path = "C:/Users/Aul/Downloads/nutribuddyantirevisi/nutrition.csv"
+    path = "nutrition.csv"
     try:
         df = pd.read_csv(path)
         df.columns = df.columns.str.lower()
