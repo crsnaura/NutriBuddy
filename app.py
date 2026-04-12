@@ -217,7 +217,9 @@ def process_input(text):
     return "Maksud kamu yang mana nih? Pilih salah satu ya!", high_matches
 
     # PANGGIL LOGIKA NER (Sesuai Metodologi Jurnal)
-    food_query, qty = extract_entities(text)
+    from utils.ner import extract_entities_indobert
+
+    food_query, qty = extract_entities_indobert(text, tokenizer, model)
 
     if not food_query:
         return "Aku belum ngerti makanan yang kamu maksud 😢", None
