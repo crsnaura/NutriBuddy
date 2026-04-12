@@ -136,65 +136,69 @@ def load_data():
 df = load_data()
 
 # --- 4. LOGIKA PINTAR ---
-def get_nutrition_response(food_name, kalori=None, protein=None, lemak=None, porsi=1.0):
-    if kalori is None:
+def get_nutrition_response(food_name, porsi=1.0):
+    try:
+        # Mengambil data dari dataframe
         data = df[df["nama"] == food_name].iloc[0]
-        # Kalikan nilai gizi dengan jumlah porsi
+        
+        # Logika sistem mengalikan kuantitas (Sesuai Poin 4 Jurnal)
         kalori = data['kalori'] * porsi
-        protein = f"{data['protein'] * porsi:.1f}g"
-        lemak = f"{data['lemak'] * porsi:.1f}g"
-        karbo = f"{data['karbohidrat'] * porsi:.1f}g"
-    else:
-        # Untuk input manual seperti 'Rara'
-        kalori = kalori * porsi
-        karbo = "-"
-
-    st.session_state.total_kalori_harian += kalori
-    st.session_state.daftar_makan_harian.extend([food_name.title()] * int(porsi))
-    
-    return (
-        f"✅ Dicatat: {food_name.title()} ({porsi} Porsi)\n\n"
-        f"Total Energi: {kalori:.0f} kkal\n"
-        f"Rincian Gizi: Karbo {karbo}, Protein {protein}, Lemak {lemak}")
+        protein = data['protein'] * porsi
+        lemak = data['lemak'] * porsi
+        karbo = data['karbohidrat'] * porsi
+        
+        st.session_state.total_kalori_harian += kalori
+        # Simpan riwayat dengan info porsi
+        st.session_state.daftar_makan_harian.append(f"{food_name.title()} ({porsi}x)")
+        
+        return (
+            f"✅ **NER & Fuzzy Match Berhasil!**\n\n"
+            f"Item: **{food_name.title()}**\n"
+            f"Jumlah: **{porsi} Porsi**\n"
+            f"Total Energi: **{kalori:.1f} kkal**\n\n"
+            f"**Rincian Gizi:**\n"
+            f"Karbo: {karbo:.1f}g | Protein: {protein:.1f}g | Lemak: {lemak:.1f}g\n"
+            f"--- \n"
+            f"⚠️ _Catatan: Dihitung berdasarkan standar 100g per porsi._")
+    except Exception as e:
+        return f"Gagal menghitung nutrisi: {e}"
 def process_input(text):
     text = text.lower()
     
-    # 1. Logika fitur ringkasan (Tetap dipertahankan)
+    # 1. Fitur Ringkasan (Tetap sama)
     if any(k in text for k in ["total", "jumlah", "kurang", "sisa"]):
         total = st.session_state.total_kalori_harian
         if not st.session_state.daftar_makan_harian:
             return "Kamu belum makan apa-apa hari ini.", None
-        counts = Counter(st.session_state.daftar_makan_harian)
-        ringkasan = ", ".join([f"{name} ({qty}x)" for name, qty in counts.items()])
-        pesan = f"Total asupanmu: **{total:.0f} kkal**.\n\n**Riwayat:** {ringkasan}."
-        if total > 2000:
-            pesan += "\n\n⚠️ _Wah, sudah lewat 2000 kkal! Jangan lupa olahraga ya!_"
-        return pesan, None
+        ringkasan = ", ".join(st.session_state.daftar_makan_harian)
+        return f"Total asupanmu: **{total:.0f} kkal**.\n\n**Riwayat:** {ringkasan}.", None
 
-    # 2. Ekstraksi Entitas (Sesuai klaim NER di metode)
-    food_list = df["nama"].tolist()
-    entities = extract_entities(text, food_list)
-
-    if not entities["foods"]:
-        return "Aku belum ngerti makanan yang kamu maksud 😢", None
-
-    responses = []
+    # 2. Tahap NER (Simulasi IndoBERT untuk Food & Quantity)
+    # Mencari angka (Quantity)
+    nums = re.findall(r'\d+', text)
+    qty = float(nums[0]) if nums else 1.0
     
-    # 3. Integrasi Fuzzy Matching & Kuantitas (Sesuai metode)
-    for i, food_item in enumerate(entities["foods"]):
-        # Ambil kuantitas yang terdeteksi, default 1 jika tidak ada
-        qty = float(entities["quantities"][i]) if i < len(entities["quantities"]) else 1.0
-        
-        # Levenshtein Distance (Fuzzy Match) hasil NER ke Database
-        match = process.extractOne(food_item, food_list, score_cutoff=85)
-        
-        if match:
-            # Panggil fungsi nutrisi dengan parameter kuantitas/porsi
-            responses.append(get_nutrition_response(match[0], porsi=qty))
-        else:
-            responses.append(f"❓ Makanan '{food_item}' tidak ditemukan di database.")
+    # Mencari nama makanan (Food) - Menghapus angka dan kata keterangan
+    clean_query = re.sub(r'\d+', '', text)
+    clean_query = clean_query.replace("makan", "").replace("habis", "").replace("tadi", "").strip()
 
-    return "\n\n".join(responses), None
+    # 3. Tahap Integrasi Fuzzy Matching (Levenshtein Distance)
+    food_list = df["nama"].tolist()
+    matches = process.extract(clean_query, food_list, limit=3)
+    
+    # Ambil yang skornya di atas 75
+    high_matches = [m[0] for m in matches if m[1] > 75]
+    
+    if not high_matches:
+        return "Duh, aku ngga nemu makanan itu. Coba sebut yang lain ya!", None
+    
+    # Jika sangat akurat (>90), langsung tampilkan hasil
+    if matches[0][1] > 90:
+        return get_nutrition_response(matches[0][0], porsi=qty), None
+    
+    # Jika ambigu, berikan pilihan (Simpan qty ke session agar tidak hilang)
+    st.session_state.last_qty = qty
+    return "Maksud kamu yang mana nih? Pilih salah satu ya!", high_matches
     
 def extract_entities(text, food_list):
     text = text.lower()
@@ -265,7 +269,13 @@ with main_container:
             with st.container():
                 if st.button(opt.title(), key=f"choice_{i}"):
                     st.session_state.messages.append({"role": "user", "content": opt.title()})
-                    st.session_state.messages.append({"role": "assistant", "content": get_nutrition_response(opt)})
+    
+                    # Ambil quantity yang tadi disimpan di session state
+                    saved_qty = st.session_state.get('last_qty', 1.0)
+                    
+                    jawaban_final = get_nutrition_response(opt, porsi=saved_qty)
+                    st.session_state.messages.append({"role": "assistant", "content": jawaban_final})
+                    
                     st.session_state.pending_options = None
                     st.rerun()
                     
