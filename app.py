@@ -134,7 +134,12 @@ def load_data():
     except: return pd.DataFrame()
 
 df = load_data()
-
+def preprocess_text(text):
+    # Menghapus karakter khusus (simbol) sesuai poin jurnal
+    text = re.sub(r'[^\w\s\d]', '', text) 
+    # Mengubah ke huruf kecil
+    text = text.lower().strip()
+    return text
 # --- 4. LOGIKA PINTAR ---
 def get_nutrition_response(food_name, porsi=1.0):
     try:
@@ -199,39 +204,51 @@ def process_input(text):
     # Jika ambigu, berikan pilihan (Simpan qty ke session agar tidak hilang)
     st.session_state.last_qty = qty
     return "Maksud kamu yang mana nih? Pilih salah satu ya!", high_matches
-    
-def extract_entities(text, food_list):
-    text = text.lower()
-    
-    # Hapus kata keterangan/stopword agar tidak salah deteksi jadi makanan
-    stopwords = ["habis", "makan", "dan", "saya", "tadi", "sama", "dengan", "porsi"]
-    for word in stopwords:
-        text = text.replace(f" {word} ", " ")
 
-    # 1. Ekstraksi Angka (Quantity) menggunakan Regex
-    quantities = re.findall(r'\d+', text)
-    
-    # 2. Ekstraksi Makanan (Food) - Hanya ambil kata yang bukan angka
-    words = [w for w in text.split() if not w.isdigit()]
-    detected_foods = []
-    
-    for word in words:
-        if len(word) < 3: continue # Abaikan kata yang terlalu pendek (1-2 huruf)
-        
-        # Fuzzy Match dengan threshold tinggi (90) agar tidak asal cocok
-        match = process.extractOne(word, food_list, score_cutoff=90)
-        if match:
-            detected_foods.append(match[0])
-            
-    # Menghapus duplikat makanan
-    seen = set()
-    unique_foods = [x for x in detected_foods if not (x in seen or seen.add(x))]
+    # PANGGIL LOGIKA NER (Sesuai Metodologi Jurnal)
+    food_query, qty = extract_entities(text)
 
-    return {
-        "foods": unique_foods,
-        "quantities": quantities if quantities else ["1"]
-    }
+    if not food_query:
+        return "Aku belum ngerti makanan yang kamu maksud 😢", None
 
+    food_list = df["nama"].tolist()
+    # TAHAP FUZZY MATCHING (Levenshtein Distance)
+    matches = process.extract(food_query, food_list, limit=3)
+    
+    high_matches = [m[0] for m in matches if m[1] > 75]
+    
+    if not high_matches:
+        return "Duh, aku ngga nemu makanan itu di database.", None
+
+    if matches[0][1] > 90:
+        # TAHAP KALKULASI (Multiplikasi Nilai Nutrisi)
+        return get_nutrition_response(matches[0][0], porsi=qty), None
+    
+    st.session_state.last_qty = qty # Simpan porsi untuk pilihan tombol
+    return "Maksud kamu yang mana nih?", high_matches
+    
+def extract_entities(text):
+    # --- 1. PRE-PROCESSING (Sesuai Jurnal: Eliminasi Karakter Khusus) ---
+    # Menghapus simbol seperti @, #, !, dll agar tidak mengganggu sistem
+    text = re.sub(r'[^\w\s\d]', '', text) 
+    text = text.lower().strip()
+
+    # --- 2. NER QUANTITY (Ekstraksi Angka) ---
+    # Mengambil angka dari kalimat untuk dikalikan ke nutrisi nanti
+    nums = re.findall(r'\d+', text)
+    qty = float(nums[0]) if nums else 1.0
+    
+    # --- 3. NER FOOD (Ekstraksi Nama Makanan) ---
+    # Menghapus angka dan kata umum agar hanya menyisakan nama makanan
+    clean_query = re.sub(r'\d+', '', text)
+    stopwords = ["habis", "makan", "dan", "saya", "tadi", "sama", "dengan", "porsi", "aku"]
+    
+    # Memfilter kata-kata
+    query_words = [w for w in clean_query.split() if w not in stopwords]
+    final_food_query = " ".join(query_words)
+    
+    return final_food_query, qty
+    
 # --- 5. TAMPILAN UTAMA ---
 main_container = st.container()
 
