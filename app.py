@@ -4,9 +4,7 @@ from rapidfuzz import process
 from collections import Counter
 import re
 
-# =============================
-# 1. SESSION STATE
-# =============================
+# --- 1. INITIAL SETTINGS ---
 if "messages" not in st.session_state:
     st.session_state.messages = []
 if "total_kalori_harian" not in st.session_state:
@@ -18,9 +16,88 @@ if "pending_options" not in st.session_state:
 
 st.set_page_config(page_title="NutriBuddy AI", page_icon="🥗", layout="centered")
 
-# =============================
-# 2. LOAD DATA
-# =============================
+# --- 2. CSS (TETAP SAMA) ---
+st.markdown("""
+<style>
+    @import url('https://fonts.googleapis.com/css2?family=Instrument+Serif&family=Inter:wght@400;500;600&display=swap');
+    
+    #MainMenu {visibility: hidden;} footer {visibility: hidden;} header {visibility: hidden;}
+    
+    .stApp { 
+        background: linear-gradient(135deg, #fdfcfd 0%, #f5f0ff 100%);
+        font-family: 'Inter', sans-serif; 
+    }
+
+    .top-header { 
+        position: fixed; top: 0; left: 0; width: 100%; padding: 15px 30px; 
+        background: rgba(255, 255, 255, 0.7); 
+        backdrop-filter: blur(20px); 
+        z-index: 999; 
+        font-weight: 600; 
+        font-size: 18px; 
+        color: #4c1d95;
+        border-bottom: 1px solid rgba(139, 92, 246, 0.1); 
+    }
+
+    .main .block-container {
+        padding-top: 100px;
+        padding-bottom: 130px;
+        max-width: 650px;
+    }
+
+    .hero-text {
+        font-family: 'Instrument Serif', serif;
+        font-size: 52px;
+        color: #2e1065;
+        line-height: 1.1;
+        margin-bottom: 8px;
+    }
+    
+    .hero-subtext {
+        color: #6b21a8;
+        font-size: 18px;
+        margin-bottom: 40px;
+        opacity: 0.8;
+    }
+
+    .chat-row { display: flex; margin: 18px 0; width: 100%; animation: fadeIn 0.4s ease-out; }
+    .row-user { justify-content: flex-end; }
+    .row-bot { justify-content: flex-start; }
+    
+    .bubble-user { 
+        background: #8b5cf6; 
+        color: white; 
+        padding: 12px 22px; 
+        border-radius: 24px 24px 4px 24px; 
+        box-shadow: 0 4px 12px rgba(139, 92, 246, 0.2);
+        max-width: 85%;
+    }
+    
+    .bubble-bot { 
+        background: rgba(255, 255, 255, 0.85); 
+        color: #1e1b4b; 
+        padding: 16px 22px; 
+        border-radius: 4px 24px 24px 24px; 
+        border: 1px solid rgba(139, 92, 246, 0.2); 
+        backdrop-filter: blur(12px);
+        box-shadow: 0 4px 20px rgba(0,0,0,0.03);
+        max-width: 85%;
+        line-height: 1.5;
+    }
+
+    div.stButton > button { 
+        background: white; 
+        border: 1px solid rgba(139, 92, 246, 0.15); 
+        border-radius: 20px; 
+        padding: 10px 20px; 
+        color: #4c1d95;
+    }
+</style>
+""", unsafe_allow_html=True)
+
+st.markdown('<div class="top-header">NutriBuddy</div>', unsafe_allow_html=True)
+
+# --- 3. DATA LOAD ---
 @st.cache_data
 def load_data():
     df = pd.read_csv("nutrition.csv")
@@ -38,19 +115,18 @@ def load_data():
 df = load_data()
 
 # =============================
-# 3. NLP - ENTITY EXTRACTION
+# 🔥 NLP / NER UPGRADE
 # =============================
 def extract_entities(text, food_list):
     text = text.lower()
 
-    # ambil angka (quantity)
+    # ambil quantity
     quantities = re.findall(r'\d+', text)
     quantity = int(quantities[0]) if quantities else 1
 
     detected_foods = []
     words = text.split()
 
-    # sliding window (1–3 kata)
     for i in range(len(words)):
         for j in range(i+1, min(i+4, len(words)+1)):
             phrase = " ".join(words[i:j])
@@ -63,9 +139,7 @@ def extract_entities(text, food_list):
         "quantity": quantity
     }
 
-# =============================
-# 4. RESPONSE GENERATOR
-# =============================
+# --- RESPONSE ---
 def get_nutrition_response(food_name, quantity=1):
     data = df[df["nama"] == food_name].iloc[0]
 
@@ -88,13 +162,11 @@ def get_nutrition_response(food_name, quantity=1):
         f"⚠️ _Perhitungan berdasarkan 100 gram per porsi._"
     )
 
-# =============================
-# 5. MAIN NLP PROCESSING
-# =============================
+# --- PROCESS ---
 def process_input(text):
     text = text.lower()
 
-    # ===== INTENT: TOTAL =====
+    # intent total
     if any(k in text for k in ["total", "jumlah", "sisa"]):
         total = st.session_state.total_kalori_harian
 
@@ -107,44 +179,35 @@ def process_input(text):
         pesan = f"Total asupanmu: **{total:.0f} kkal**.\n\nRiwayat: {ringkasan}"
 
         if total > 2000:
-            pesan += "\n\n⚠️ _Sudah melebihi 2000 kkal, jangan lupa olahraga ya!_"
+            pesan += "\n\n⚠️ _Sudah melebihi 2000 kkal!_"
 
         return pesan, None
 
-    # ===== ENTITY EXTRACTION =====
+    # NLP extraction
     food_list = df["nama"].tolist()
     entities = extract_entities(text, food_list)
 
     if not entities["foods"]:
-        return "Aku belum ngerti makanan yang kamu maksud 😢", None
+        return "Aku belum ngerti makanan kamu 😢", None
 
-    # ===== GENERATE MULTI RESPONSE =====
     responses = []
     for food in entities["foods"]:
         responses.append(get_nutrition_response(food, entities["quantity"]))
 
     return "\n\n".join(responses), None
 
-# =============================
-# 6. UI (STREAMLIT)
-# =============================
-st.title("🥗 NutriBuddy AI")
+# --- UI ---
+main_container = st.container()
 
-# tampilkan chat
-for msg in st.session_state.messages:
-    if msg["role"] == "user":
-        st.chat_message("user").write(msg["content"])
-    else:
-        st.chat_message("assistant").write(msg["content"])
+with main_container:
+    for msg in st.session_state.messages:
+        side, bubble = ("row-user", "bubble-user") if msg["role"] == "user" else ("row-bot", "bubble-bot")
+        st.markdown(f'<div class="chat-row {side}"><div class="{bubble}">{msg["content"]}</div></div>', unsafe_allow_html=True)
 
-# input user
-prompt = st.chat_input("Tanya makananmu...")
+prompt = st.chat_input("Tanya NutriBuddy...")
 
 if prompt:
     st.session_state.messages.append({"role": "user", "content": prompt})
-
-    response, options = process_input(prompt)
-
-    st.session_state.messages.append({"role": "assistant", "content": response})
-
+    jawaban, options = process_input(prompt)
+    st.session_state.messages.append({"role": "assistant", "content": jawaban})
     st.rerun()
