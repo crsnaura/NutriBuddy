@@ -1,4 +1,6 @@
 streamlit
 pandas
 rapidfuzz
-
+transformers
+torch
+sentencepiece
